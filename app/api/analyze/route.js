@@ -2,63 +2,78 @@ export async function POST(req) {
   try {
     const { prompt } = await req.json();
 
-    let claude = "";
-    let gemini = "";
+    // URL detect (simple)
+    const urlMatch = prompt.match(/https?:\/\/\S+/i);
+    const url = urlMatch ? urlMatch[0] : null;
 
-    // 🧠 CLAUDE
-    if (process.env.ANTHROPIC_API_KEY) {
-      try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": process.env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01"
-          },
-          body: JSON.stringify({
-            model: "claude-3-sonnet-20240229",
-            max_tokens: 300,
-            messages: [{ role: "user", content: prompt }]
-          })
-        });
+    const system = `
+You are Satya AI (created by Anmol Singh).
 
-        const data = await res.json();
-        claude = data?.content?.[0]?.text || "No response";
-      } catch (e) {
-        claude = "Claude error";
+Task:
+- If a URL is provided, analyze that link using web knowledge.
+- Use Google Search grounding to fetch recent info.
+- Decide: REAL / FAKE / MISLEADING / UNVERIFIED.
+
+Return ONLY valid JSON (no markdown):
+
+{
+  "verdict": "REAL or FAKE or MISLEADING or UNVERIFIED",
+  "confidence": 0-100,
+  "summary": "2-3 line summary of the content/topic",
+  "truth": "What is actually true (fact-based)",
+  "manipulation": "If misleading/edited, explain how",
+  "sources": ["source 1","source 2","source 3"],
+  "talk": "Explain like a human (simple Hinglish/English mix)",
+  "creator": "Built by Anmol Singh"
+}
+`;
+
+    // अगर link है तो उसे include करके query मजबूत बनाओ
+    const userQuery = url
+      ? `Analyze this link and claim:\nURL: ${url}\n\nUser text: ${prompt}`
+      : `Analyze this claim:\n${prompt}`;
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: system + "\n\n" + userQuery }],
+            },
+          ],
+          // 👇 Google Search grounding (important)
+          tools: [{ google_search: {} }],
+        }),
       }
+    );
+
+    const data = await res.json();
+
+    // text निकालो
+    const raw =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    // ```json fences हटाओ
+    const cleaned = raw.replace(/```json|```/g, "").trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      return Response.json({
+        error: "AI JSON parse failed",
+        raw: cleaned,
+      });
     }
 
-    // 🔍 GEMINI
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        const res = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${process.env.GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }]
-            })
-          }
-        );
-
-        const data = await res.json();
-        gemini =
-          data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
-      } catch (e) {
-        gemini = "Gemini error";
-      }
-    }
-
-    return Response.json({
-      claude,
-      gemini
-    });
-
+    return Response.json(parsed);
   } catch (err) {
     return Response.json(
-      { error: "Something went wrong" },
+      { error: err.message },
       { status: 500 }
     );
   }
