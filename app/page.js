@@ -1,36 +1,37 @@
 "use client";
-
 import { useState } from "react";
 
 export default function Home() {
   const [input, setInput] = useState("");
-  const [result, setResult] = useState(null);
+  const [data, setData] = useState(null);
 
-  const send = async () => {
+  const analyze = async () => {
     const res = await fetch("/api/analyze", {
       method: "POST",
-      body: JSON.stringify({ prompt: input })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: input }),
     });
 
-    const data = await res.json();
-    setResult(data);
+    const json = await res.json();
+    setData(json);
   };
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>Satya AI 🔥</h1>
+      <h1>🔮 Satya AI</h1>
 
       <textarea
         value={input}
         onChange={(e) => setInput(e.target.value)}
-        placeholder="Ask anything..."
+        placeholder="Paste link or text..."
+        style={{ width: "100%", height: 100 }}
       />
 
-      <br /><br />
+      <button onClick={analyze}>Analyze</button>
 
-      <button onClick={send}>Analyze</button>
-
-      <pre>{JSON.stringify(result, null, 2)}</pre>
+      {data && (
+        <pre>{JSON.stringify(data, null, 2)}</pre>
+      )}
     </div>
   );
 }
