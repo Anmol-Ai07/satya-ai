@@ -6,59 +6,30 @@ export async function POST(req) {
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           contents: [
             {
-              parts: [
-                {
-                  text: `
-Return ONLY JSON (no extra text):
-
-{
- "verdict": "",
- "confidence": 0,
- "summary": "",
- "truth": "",
- "manipulation": ""
-}
-
-Text: ${prompt}
-                  `,
-                },
-              ],
+              parts: [{ text: `Fact check this: ${prompt}` }],
             },
           ],
-          tools: [{ google_search: {} }],
         }),
       }
     );
 
     const data = await res.json();
 
-    let text =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
 
-    // cleanup
-    text = text.replace(/```json|```/g, "").trim();
-
-    let parsed;
-
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      // fallback if AI fails
-      parsed = {
-        verdict: "UNVERIFIED",
-        confidence: 50,
-        summary: text,
-        truth: "Could not parse structured response",
-        manipulation: "AI returned invalid JSON",
-      };
-    }
-
-    return Response.json(parsed);
+    return Response.json({
+      verdict: "UNVERIFIED",
+      confidence: 70,
+      summary: text,
+    });
   } catch (err) {
-    return Response.json({ error: err.message });
+    return Response.json({ error: "API failed" });
   }
 }
